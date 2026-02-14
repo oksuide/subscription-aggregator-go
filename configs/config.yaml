@@ -1,0 +1,17 @@
+env: "local"
+log_level: "debug" 
+
+http_server:
+  address: "localhost:8080"
+  server_port: "8080"
+  timeout: 5s
+  idle_timeout: 1m
+
+db:
+  host: ${DB_HOST}
+  port: ${DB_PORT}
+  user: ${DB_USER}
+  password: ${DB_PASSWORD}
+  dbname: ${DB_NAME}
+  sslmode: ${DB_SSLMODE:disable}
+  migrations_path: "./internal/storage/migrations"

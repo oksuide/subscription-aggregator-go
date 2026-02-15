@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    serviec_name VARCHAR(255) NOT NULL,
+    service_name VARCHAR(255) NOT NULL,
     price INTEGER NOT NULL CHECK (price >= 0),
     user_id UUID NOT NULL,
     start_date DATE NOT NULL,

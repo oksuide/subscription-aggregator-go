@@ -2,11 +2,9 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -34,11 +32,6 @@ type DBConfig struct {
 }
 
 func LoadConfig() (*Config, error) {
-	// Загружаем .env файл
-	if err := godotenv.Load(); err != nil {
-		log.Println("Warning: .env file not found")
-	}
-
 	viper.AddConfigPath("./configs")
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")

@@ -2,7 +2,6 @@ package subscription
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
@@ -60,7 +59,7 @@ func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionRe
 
 	rawResponse, err := s.repo.GetSubscription(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, ErrSubscriptionNotFound) {
 			s.logger.Debug("subscription not found", zap.Int64("id", id))
 			return SubscriptionResp{}, ErrSubscriptionNotFound
 		}
@@ -72,6 +71,24 @@ func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionRe
 	response := toResponse(rawResponse)
 
 	return response, nil
+}
+
+func (s *Service) DeleteSubscription(ctx context.Context, id int64) error {
+	s.logger.Info("deleting subscription",
+		zap.Int64("subscription_id", id))
+
+	if err := s.repo.DeleteSubscription(ctx, id); err != nil {
+		if errors.Is(err, ErrSubscriptionNotFound) {
+			s.logger.Debug("subscription not found", zap.Int64("id", id))
+			return ErrSubscriptionNotFound
+		}
+		s.logger.Error("failed to delete subscription from repo",
+			zap.Int64("id", id),
+			zap.Error(err))
+		return err
+	}
+
+	return nil
 }
 
 func toModel(req SubscriptionReq) (Subscription, error) {

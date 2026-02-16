@@ -2,7 +2,6 @@ package subscription
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strconv"
 	"time"
@@ -92,7 +91,7 @@ func (h *Handler) GetSubscription(c *gin.Context) {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
 			c.JSON(504, gin.H{"error": "timeout"})
-		case errors.Is(err, sql.ErrNoRows):
+		case errors.Is(err, ErrSubscriptionNotFound):
 			c.JSON(404, gin.H{"error": "subscription not found"})
 		default:
 			h.logger.Error("failed to get subscription",
@@ -117,11 +116,40 @@ func (h *Handler) UpdateSubscription(c *gin.Context) {
 	// }
 }
 func (h *Handler) DeleteSubscription(c *gin.Context) {
-	// ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
-	// defer cancel()
-	// response, err := h.service.CreateSubscription(ctx, req)
-	// if err != nil {
-	// }
+	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+	defer cancel()
+
+	id, err := getID(c)
+	if err != nil {
+		h.logger.Warn("invalid id format",
+			zap.String("id", c.Param("id")),
+			zap.Error(err))
+		c.JSON(400, gin.H{"error": "invalid subscription id"})
+		return
+	}
+	h.logger.Debug("deleting subscription",
+		zap.Int64("subscription_id", id))
+
+	err = h.service.DeleteSubscription(ctx, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			c.JSON(504, gin.H{"error": "timeout"})
+		case errors.Is(err, ErrSubscriptionNotFound):
+			c.JSON(404, gin.H{"error": "subscription not found"})
+		default:
+			h.logger.Error("failed to delete subscription",
+				zap.Int("status", 500),
+				zap.String("error", err.Error()),
+				zap.String("path", c.Request.URL.Path))
+			c.JSON(500, gin.H{"error": "internal error"})
+		}
+		return
+	}
+	h.logger.Info("subscription deleted successfully",
+		zap.Int64("id", id))
+
+	c.Status(204)
 }
 func (h *Handler) GetAllSubscriptions(c *gin.Context) {
 	// ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)

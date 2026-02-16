@@ -18,6 +18,7 @@ type Repo struct {
 type Repository interface {
 	CreateSubscription(ctx context.Context, sub Subscription) (Subscription, error)
 	GetSubscription(ctx context.Context, id int64) (Subscription, error)
+	DeleteSubscription(ctx context.Context, id int64) error
 }
 
 func NewRepository(db *sqlx.DB, logger *zap.Logger) Repository {
@@ -60,7 +61,7 @@ func (r *Repo) GetSubscription(ctx context.Context, id int64) (Subscription, err
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			r.logger.Debug("subscription not found in db", zap.Int64("id", id))
-			return Subscription{}, sql.ErrNoRows
+			return Subscription{}, ErrSubscriptionNotFound
 		}
 		r.logger.Error("failed to get subscription from db",
 			zap.Int64("id", id),
@@ -68,4 +69,29 @@ func (r *Repo) GetSubscription(ctx context.Context, id int64) (Subscription, err
 		return Subscription{}, fmt.Errorf("db select: %w", err)
 	}
 	return received, nil
+}
+
+func (r *Repo) DeleteSubscription(ctx context.Context, id int64) error {
+	r.logger.Debug("executing delete query",
+		zap.Int64("subscription_id", id))
+
+	query := "DELETE FROM subscriptions WHERE id = $1"
+	result, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		r.logger.Error("failed to delete subscription from db",
+			zap.Int64("id", id),
+			zap.Error(err))
+		return fmt.Errorf("db delete: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		r.logger.Debug("subscription not found for deletion",
+			zap.Int64("id", id))
+		return ErrSubscriptionNotFound
+	}
+	return nil
 }

@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -26,54 +27,98 @@ func NewService(repo Repository, logger *zap.Logger) *Service {
 	}
 }
 
-func (s *Service) CreateSubscription(ctx context.Context, rawSub SubscriptionReq) (Subscription, error) {
+func (s *Service) CreateSubscription(ctx context.Context, req SubscriptionReq) (SubscriptionResp, error) {
 	s.logger.Info("creating subscription",
-		zap.String("user_id", rawSub.UserID.String()),
-		zap.String("service", rawSub.ServiceName),
-		zap.Int("price", rawSub.Price),
-		zap.String("start_date", rawSub.StartDate))
+		zap.String("user_id", req.UserID.String()),
+		zap.String("service", req.ServiceName),
+		zap.Int("price", req.Price),
+		zap.String("start_date", req.StartDate))
 
-	startDate, err := time.Parse("01-2006", rawSub.StartDate)
+	sub, err := toModel(req)
 	if err != nil {
-		s.logger.Warn("invalid start date format",
-			zap.String("user_id", rawSub.UserID.String()),
-			zap.String("start_date", rawSub.StartDate),
+		s.logger.Warn("invalid subscription data",
+			zap.String("user_id", req.UserID.String()),
 			zap.Error(err))
+
+		if errors.Is(err, ErrEndDateBeforeStart) {
+			return SubscriptionResp{}, ErrEndDateBeforeStart
+		}
+		return SubscriptionResp{}, ErrInvalidDateFormat
+	}
+
+	created, err := s.repo.CreateSubscription(ctx, sub)
+	if err != nil {
+		return SubscriptionResp{}, err
+	}
+	response := toResponse(created)
+	return response, nil
+}
+
+func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionResp, error) {
+	s.logger.Info("getting subscription",
+		zap.Int64("subscription_id", id))
+
+	rawResponse, err := s.repo.GetSubscription(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.logger.Debug("subscription not found", zap.Int64("id", id))
+			return SubscriptionResp{}, ErrSubscriptionNotFound
+		}
+		s.logger.Error("failed to get subscription from repo",
+			zap.Int64("id", id),
+			zap.Error(err))
+		return SubscriptionResp{}, err
+	}
+	response := toResponse(rawResponse)
+
+	return response, nil
+}
+
+func toModel(req SubscriptionReq) (Subscription, error) {
+	startDate, err := time.Parse("01-2006", req.StartDate)
+	if err != nil {
 		return Subscription{}, ErrInvalidDateFormat
 	}
 
 	var endDate *time.Time
-	if rawSub.EndDate != nil {
-		parsed, err := time.Parse("01-2006", *rawSub.EndDate)
+	if req.EndDate != nil {
+		parsed, err := time.Parse("01-2006", *req.EndDate)
 		if err != nil {
-			s.logger.Warn("invalid end date format",
-				zap.String("user_id", rawSub.UserID.String()),
-				zap.String("end_date", *rawSub.EndDate),
-				zap.Error(err))
 			return Subscription{}, ErrInvalidDateFormat
 		}
 		endDate = &parsed
 	}
 
 	if endDate != nil && endDate.Before(startDate) {
-		s.logger.Warn("end date before start date",
-			zap.String("user_id", rawSub.UserID.String()),
-			zap.Time("start_date", startDate),
-			zap.Time("end_date", *endDate))
 		return Subscription{}, ErrEndDateBeforeStart
 	}
 
-	sub := Subscription{
+	return Subscription{
+		ServiceName: req.ServiceName,
+		Price:       req.Price,
+		UserID:      req.UserID,
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}, nil
+}
+
+func toResponse(rawSub Subscription) SubscriptionResp {
+	startDate := rawSub.StartDate.Format("01-2006")
+
+	var endDate *string
+	if rawSub.EndDate != nil {
+		formatted := rawSub.EndDate.Format("01-2006")
+		endDate = &formatted
+	}
+
+	return SubscriptionResp{
+		ID:          rawSub.ID,
 		ServiceName: rawSub.ServiceName,
 		Price:       rawSub.Price,
 		UserID:      rawSub.UserID,
 		StartDate:   startDate,
 		EndDate:     endDate,
+		CreatedAt:   rawSub.CreatedAt,
+		UpdatedAt:   rawSub.UpdatedAt,
 	}
-	response, err := s.repo.CreateSubscription(ctx, sub)
-	if err != nil {
-		return Subscription{}, err
-	}
-
-	return response, nil
 }

@@ -2,6 +2,8 @@ package subscription
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -15,6 +17,7 @@ type Repo struct {
 
 type Repository interface {
 	CreateSubscription(ctx context.Context, sub Subscription) (Subscription, error)
+	GetSubscription(ctx context.Context, id int64) (Subscription, error)
 }
 
 func NewRepository(db *sqlx.DB, logger *zap.Logger) Repository {
@@ -36,7 +39,6 @@ func (r *Repo) CreateSubscription(ctx context.Context, sub Subscription) (Subscr
 	created.UserID = sub.UserID
 	created.StartDate = sub.StartDate
 	created.EndDate = sub.EndDate
-
 	err := r.db.QueryRowContext(ctx, query,
 		sub.ServiceName, sub.Price, sub.UserID, sub.StartDate, sub.EndDate,
 	).Scan(&created.ID, &created.CreatedAt, &created.UpdatedAt)
@@ -47,4 +49,23 @@ func (r *Repo) CreateSubscription(ctx context.Context, sub Subscription) (Subscr
 		return Subscription{}, fmt.Errorf("db insert: %w", err)
 	}
 	return created, nil
+}
+
+func (r *Repo) GetSubscription(ctx context.Context, id int64) (Subscription, error) {
+	query := "SELECT * FROM subscriptions WHERE id = $1"
+
+	var received Subscription
+
+	err := r.db.GetContext(ctx, &received, query, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			r.logger.Debug("subscription not found in db", zap.Int64("id", id))
+			return Subscription{}, sql.ErrNoRows
+		}
+		r.logger.Error("failed to get subscription from db",
+			zap.Int64("id", id),
+			zap.Error(err))
+		return Subscription{}, fmt.Errorf("db select: %w", err)
+	}
+	return received, nil
 }

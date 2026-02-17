@@ -31,7 +31,8 @@ func (s *Service) CreateSubscription(ctx context.Context, req SubscriptionReq) (
 		zap.String("user_id", req.UserID.String()),
 		zap.String("service", req.ServiceName),
 		zap.Int("price", req.Price),
-		zap.String("start_date", req.StartDate))
+		zap.String("start_date", req.StartDate),
+		zap.Stringp("end_date", req.EndDate))
 
 	sub, err := toModel(req)
 	if err != nil {
@@ -47,6 +48,13 @@ func (s *Service) CreateSubscription(ctx context.Context, req SubscriptionReq) (
 
 	created, err := s.repo.CreateSubscription(ctx, sub)
 	if err != nil {
+		s.logger.Error("failed to create subscription in repo",
+			zap.String("user_id", req.UserID.String()),
+			zap.String("service", req.ServiceName),
+			zap.Int("price", req.Price),
+			zap.String("start_date", req.StartDate),
+			zap.Stringp("end_date", req.EndDate),
+			zap.Error(err))
 		return SubscriptionResp{}, err
 	}
 	response := toResponse(created)
@@ -70,6 +78,42 @@ func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionRe
 	}
 	response := toResponse(rawResponse)
 
+	return response, nil
+}
+
+func (s *Service) UpdateSubscription(ctx context.Context, id int64, req SubscriptionReq) (SubscriptionResp, error) {
+	s.logger.Info("updating subscription",
+		zap.Int64("subscription_id", id),
+		zap.String("service", req.ServiceName),
+		zap.String("user_id", req.UserID.String()),
+		zap.Int("price", req.Price),
+		zap.String("start_date", req.StartDate),
+		zap.Stringp("end_date", req.EndDate))
+
+	updates, err := toModel(req)
+	if err != nil {
+		s.logger.Warn("invalid subscription data",
+			zap.String("user_id", req.UserID.String()),
+			zap.Error(err))
+
+		if errors.Is(err, ErrEndDateBeforeStart) {
+			return SubscriptionResp{}, ErrEndDateBeforeStart
+		}
+		return SubscriptionResp{}, ErrInvalidDateFormat
+	}
+
+	updated, err := s.repo.UpdateSubscription(ctx, id, updates)
+	if err != nil {
+		if errors.Is(err, ErrSubscriptionNotFound) {
+			s.logger.Debug("subscription not found", zap.Int64("id", id))
+			return SubscriptionResp{}, ErrSubscriptionNotFound
+		}
+		s.logger.Error("failed to update subscription in repo",
+			zap.Int64("id", id),
+			zap.Error(err))
+		return SubscriptionResp{}, err
+	}
+	response := toResponse(updated)
 	return response, nil
 }
 

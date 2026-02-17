@@ -19,6 +19,7 @@ type Repository interface {
 	CreateSubscription(ctx context.Context, sub Subscription) (Subscription, error)
 	GetSubscription(ctx context.Context, id int64) (Subscription, error)
 	DeleteSubscription(ctx context.Context, id int64) error
+	UpdateSubscription(ctx context.Context, id int64, updates Subscription) (Subscription, error)
 }
 
 func NewRepository(db *sqlx.DB, logger *zap.Logger) Repository {
@@ -94,4 +95,39 @@ func (r *Repo) DeleteSubscription(ctx context.Context, id int64) error {
 		return ErrSubscriptionNotFound
 	}
 	return nil
+}
+
+func (r *Repo) UpdateSubscription(ctx context.Context, id int64, updates Subscription) (Subscription, error) {
+	r.logger.Debug("executing update query",
+		zap.Int64("subscription_id", id))
+	query := `UPDATE subscriptions 
+			  SET service_name = $2, 
+			  	  price = $3,
+			  	  user_id = $4,
+			  	  start_date = $5,
+			  	  end_date = $6,
+			  	  updated_at = NOW()
+			  	  WHERE id = $1
+				  RETURNING id, service_name, price, user_id, start_date, end_date, created_at, updated_at`
+	var updated Subscription
+	err := r.db.QueryRowxContext(ctx, query,
+		id,
+		updates.ServiceName,
+		updates.Price,
+		updates.UserID,
+		updates.StartDate,
+		updates.EndDate,
+	).StructScan(&updated)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			r.logger.Debug("subscription not found in db", zap.Int64("id", id))
+			return Subscription{}, ErrSubscriptionNotFound
+		}
+
+		r.logger.Error("failed to update subscription in db",
+			zap.Error(err),
+			zap.Int64("id", id))
+		return Subscription{}, fmt.Errorf("db update: %w", err)
+	}
+	return updated, nil
 }

@@ -9,6 +9,8 @@ import (
 	"subscription_aggregator_go/internal/storage"
 	"subscription_aggregator_go/internal/subscription"
 
+	_ "subscription_aggregator_go/docs"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	swaggerFiles "github.com/swaggo/files"

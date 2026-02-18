@@ -24,9 +24,21 @@ func RegisterRoutes(rg *gin.RouterGroup, service *Service, logger *zap.Logger) {
 	rg.PUT("/subscriptions/:id", h.UpdateSubscription)
 	rg.DELETE("/subscriptions/:id", h.DeleteSubscription)
 	rg.GET("/subscriptions", h.ListSubscriptions)
+
 	rg.GET("/subscriptions/total-cost", h.GetTotalCost)
 }
 
+// CreateSubscription godoc
+// @Summary      Create a new subscription
+// @Description  Create a new subscription for a user
+// @Tags         subscriptions
+// @Accept       json
+// @Produce      json
+// @Param        subscription body SubscriptionReq true "Subscription data"
+// @Success      201  {object}  SubscriptionResp
+// @Failure      400  {object}  ErrorResponse  "Invalid request body or date format"
+// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Router       /subscriptions [post]
 func (h *Handler) CreateSubscription(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()
@@ -71,6 +83,18 @@ func (h *Handler) CreateSubscription(c *gin.Context) {
 	c.JSON(201, response)
 }
 
+// GetSubscription godoc
+// @Summary      Get subscription by ID
+// @Description  Get detailed information about a specific subscription
+// @Tags         subscriptions
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "Subscription ID"
+// @Success      200  {object}  SubscriptionResp
+// @Failure      400  {object}  ErrorResponse  "Invalid ID format"
+// @Failure      404  {object}  ErrorResponse  "Subscription not found"
+// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Router       /subscriptions/{id} [get]
 func (h *Handler) GetSubscription(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()
@@ -109,6 +133,19 @@ func (h *Handler) GetSubscription(c *gin.Context) {
 	c.JSON(200, response)
 }
 
+// UpdateSubscription godoc
+// @Summary      Update subscription
+// @Description  Update an existing subscription (full update)
+// @Tags         subscriptions
+// @Accept       json
+// @Produce      json
+// @Param        id            path      int             true  "Subscription ID"
+// @Param        subscription body     SubscriptionReq true  "Updated subscription data"
+// @Success      200  {object}  SubscriptionResp
+// @Failure      400  {object}  ErrorResponse  "Invalid request or date format"
+// @Failure      404  {object}  ErrorResponse  "Subscription not found"
+// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Router       /subscriptions/{id} [put]
 func (h *Handler) UpdateSubscription(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()
@@ -161,6 +198,18 @@ func (h *Handler) UpdateSubscription(c *gin.Context) {
 	c.JSON(200, response)
 }
 
+// DeleteSubscription godoc
+// @Summary      Delete subscription
+// @Description  Delete a subscription by ID
+// @Tags         subscriptions
+// @Accept       json
+// @Produce      json
+// @Param        id   path      int  true  "Subscription ID"
+// @Success      204  "No Content"
+// @Failure      400  {object}  ErrorResponse  "Invalid ID format"
+// @Failure      404  {object}  ErrorResponse  "Subscription not found"
+// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Router       /subscriptions/{id} [delete]
 func (h *Handler) DeleteSubscription(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()
@@ -198,6 +247,17 @@ func (h *Handler) DeleteSubscription(c *gin.Context) {
 	c.Status(204)
 }
 
+// ListSubscriptions godoc
+// @Summary      List all subscriptions
+// @Description  Get paginated list of all subscriptions
+// @Tags         subscriptions
+// @Accept       json
+// @Produce      json
+// @Param        offset query int false "Offset for pagination" default(0) minimum(0)
+// @Param        limit  query int false "Limit for pagination" default(10) minimum(1) maximum(100)
+// @Success      200  {object}  ListResult
+// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Router       /subscriptions [get]
 func (h *Handler) ListSubscriptions(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()
@@ -262,6 +322,20 @@ func (h *Handler) ListSubscriptions(c *gin.Context) {
 	c.JSON(200, response)
 }
 
+// GetTotalCost godoc
+// @Summary      Calculate total cost of subscriptions
+// @Description  Calculate total cost of all subscriptions in a given period with optional filters
+// @Tags         subscriptions
+// @Accept       json
+// @Produce      json
+// @Param        start_date   query  string  true  "Start date (MM-YYYY)"
+// @Param        end_date     query  string  true  "End date (MM-YYYY)"
+// @Param        user_id      query  string  false "Filter by user ID (UUID)"
+// @Param        service_name query  string  false "Filter by service name"
+// @Success      200  {object}  TotalCostResp
+// @Failure      400  {object}  ErrorResponse  "Invalid parameters or date format"
+// @Failure      500  {object}  ErrorResponse  "Internal server error"
+// @Router       /subscriptions/total-cost [get]
 func (h *Handler) GetTotalCost(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()

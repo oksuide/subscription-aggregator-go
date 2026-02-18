@@ -13,6 +13,16 @@ import (
 	"go.uber.org/zap"
 )
 
+// @title           Subscription Service API
+// @version         1.0
+// @description     REST API service for managing user subscriptions
+// @description     Test task for Effective Mobile
+
+// @contact.name   Oleg Bogdanov
+// @contact.email  tagwaylander223@gmail.com
+
+// @host      localhost:8080
+// @BasePath  /api
 func main() {
 	a, err := app.New()
 	if err != nil {

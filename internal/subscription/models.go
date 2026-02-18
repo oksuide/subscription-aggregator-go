@@ -35,3 +35,23 @@ type SubscriptionResp struct {
 	CreatedAt   *time.Time `json:"created_at"`
 	UpdatedAt   *time.Time `json:"updated_at"`
 }
+
+type TotalCostReq struct {
+	ServiceName *string `form:"service_name"`
+	UserID      *string `form:"user_id"`
+	StartDate   string  `form:"start_date" binding:"required"`
+	EndDate     string  `form:"end_date" binding:"required"`
+}
+
+type Filters struct {
+	ServiceName *string    `json:"service_name"`
+	UserID      *uuid.UUID `json:"user_id"`
+	StartDate   time.Time  `json:"start_date"`
+	EndDate     time.Time  `json:"end_date"`
+}
+
+type TotalCostResp struct {
+	TotalCostReq
+	TotalCost          int `json:"total_cost"`
+	SubscriptionsCount int `json:"subscriptions_count"`
+}

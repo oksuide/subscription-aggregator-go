@@ -23,7 +23,8 @@ func RegisterRoutes(rg *gin.RouterGroup, service *Service, logger *zap.Logger) {
 	rg.GET("/subscriptions/:id", h.GetSubscription)
 	rg.PUT("/subscriptions/:id", h.UpdateSubscription)
 	rg.DELETE("/subscriptions/:id", h.DeleteSubscription)
-	rg.GET("/subscriptions", h.GetAllSubscriptions)
+	rg.GET("/subscriptions", h.ListSubscriptions)
+	rg.GET("/subscriptions/total-cost", h.GetTotalCost)
 }
 
 func (h *Handler) CreateSubscription(c *gin.Context) {
@@ -197,12 +198,55 @@ func (h *Handler) DeleteSubscription(c *gin.Context) {
 	c.Status(204)
 }
 
-func (h *Handler) GetAllSubscriptions(c *gin.Context) {
-	// ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
-	// defer cancel()
-	// response, err := h.service.CreateSubscription(ctx, req)
-	// if err != nil {
-	// }
+func (h *Handler) ListSubscriptions(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+	defer cancel()
+	ctx.Done()
+	req := struct {
+		Page  string
+		Limit string
+	}{Page: "", Limit: ""}
+
+	h.logger.Debug("listing subscriptions",
+		zap.String("page", req.Page),
+		zap.String("limit", req.Limit))
+}
+
+func (h *Handler) GetTotalCost(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
+	defer cancel()
+
+	var req TotalCostReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		h.logger.Warn("invalid query parameters", zap.Error(err))
+		c.JSON(400, gin.H{"error": "invalid query parameters"})
+		return
+	}
+
+	response, err := h.service.CalculateTotalCost(ctx, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			c.JSON(504, gin.H{"error": "timeout"})
+		case errors.Is(err, ErrSubscriptionNotFound):
+			c.JSON(404, gin.H{"error": "subscriptions not found"})
+		case errors.Is(err, ErrInvalidDateFormat), errors.Is(err, ErrEndDateBeforeStart):
+			c.JSON(400, gin.H{"error": err.Error()})
+		default:
+			h.logger.Error("failed to calculate cost",
+				zap.Int("status", 500),
+				zap.String("error", err.Error()),
+				zap.String("path", c.Request.URL.Path))
+			c.JSON(500, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	h.logger.Info("cost retrieved successfully",
+		zap.Int("total_cost", response.TotalCost),
+		zap.Int("subscriptions_count", response.SubscriptionsCount))
+
+	c.JSON(200, response)
 }
 
 func getID(c *gin.Context) (int64, error) {

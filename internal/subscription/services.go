@@ -3,8 +3,10 @@ package subscription
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -57,8 +59,7 @@ func (s *Service) CreateSubscription(ctx context.Context, req SubscriptionReq) (
 			zap.Error(err))
 		return SubscriptionResp{}, err
 	}
-	response := toResponse(created)
-	return response, nil
+	return toResponse(created), nil
 }
 
 func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionResp, error) {
@@ -76,9 +77,7 @@ func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionRe
 			zap.Error(err))
 		return SubscriptionResp{}, err
 	}
-	response := toResponse(rawResponse)
-
-	return response, nil
+	return toResponse(rawResponse), nil
 }
 
 func (s *Service) UpdateSubscription(ctx context.Context, id int64, req SubscriptionReq) (SubscriptionResp, error) {
@@ -113,8 +112,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, id int64, req Subscrip
 			zap.Error(err))
 		return SubscriptionResp{}, err
 	}
-	response := toResponse(updated)
-	return response, nil
+	return toResponse(updated), nil
 }
 
 func (s *Service) DeleteSubscription(ctx context.Context, id int64) error {
@@ -135,21 +133,76 @@ func (s *Service) DeleteSubscription(ctx context.Context, id int64) error {
 	return nil
 }
 
-func toModel(req SubscriptionReq) (Subscription, error) {
-	startDate, err := time.Parse("01-2006", req.StartDate)
+func (s *Service) CalculateTotalCost(ctx context.Context, req TotalCostReq) (TotalCostResp, error) {
+	s.logger.Info("calculating total cost",
+		zap.Stringp("service_name", req.ServiceName),
+		zap.Stringp("user_id", req.UserID),
+		zap.String("start_date", req.StartDate),
+		zap.String("end_date", req.EndDate))
+
+	filters, err := toFilters(req)
 	if err != nil {
-		return Subscription{}, ErrInvalidDateFormat
-	}
+		s.logger.Warn("invalid subscription data",
+			zap.Stringp("user_id", req.UserID),
+			zap.Error(err))
 
-	var endDate *time.Time
-	if req.EndDate != nil {
-		parsed, err := time.Parse("01-2006", *req.EndDate)
-		if err != nil {
-			return Subscription{}, ErrInvalidDateFormat
+		if errors.Is(err, ErrEndDateBeforeStart) {
+			return TotalCostResp{}, ErrEndDateBeforeStart
 		}
-		endDate = &parsed
+		return TotalCostResp{}, ErrInvalidDateFormat
 	}
 
+	cost, count, err := s.repo.GetTotalCost(ctx, filters)
+	if err != nil {
+		if errors.Is(err, ErrSubscriptionNotFound) {
+			s.logger.Debug("no subscriptions found for period",
+				zap.Stringp("service_name", req.ServiceName),
+				zap.Stringp("user_id", req.UserID),
+				zap.String("start_date", req.StartDate),
+				zap.String("end_date", req.EndDate))
+			return TotalCostResp{}, ErrSubscriptionNotFound
+		}
+		s.logger.Error("failed to calculate cost",
+			zap.Stringp("service_name", req.ServiceName),
+			zap.Stringp("user_id", req.UserID),
+			zap.String("start_date", req.StartDate),
+			zap.String("end_date", req.EndDate),
+			zap.Error(err))
+		return TotalCostResp{}, err
+	}
+
+	response := TotalCostResp{
+		TotalCost:          cost,
+		SubscriptionsCount: count,
+		TotalCostReq: TotalCostReq{
+			StartDate: req.StartDate,
+			EndDate:   req.EndDate,
+		},
+	}
+
+	if req.UserID != nil {
+		response.UserID = req.UserID
+	}
+	if req.ServiceName != nil {
+		response.ServiceName = req.ServiceName
+	}
+
+	s.logger.Info("cost calculated successfully",
+		zap.Int("total_cost", cost),
+		zap.Int("subscriptions_count", count))
+
+	return response, nil
+}
+
+func toModel(req SubscriptionReq) (Subscription, error) {
+	startDate, _, err := ParseDate(req.StartDate)
+	if err != nil {
+		return Subscription{}, err
+	}
+	_, endDate, err := ParseDate(req.EndDate)
+	if err != nil {
+		return Subscription{}, err
+	}
 	if endDate != nil && endDate.Before(startDate) {
 		return Subscription{}, ErrEndDateBeforeStart
 	}
@@ -182,4 +235,64 @@ func toResponse(rawSub Subscription) SubscriptionResp {
 		CreatedAt:   rawSub.CreatedAt,
 		UpdatedAt:   rawSub.UpdatedAt,
 	}
+}
+
+func toFilters(req TotalCostReq) (Filters, error) {
+	startDate, _, err := ParseDate(req.StartDate)
+	if err != nil {
+		return Filters{}, err
+	}
+
+	endDate, _, err := ParseDate(req.EndDate)
+	if err != nil {
+		return Filters{}, err
+	}
+
+	if endDate.Before(startDate) {
+		return Filters{}, ErrEndDateBeforeStart
+	}
+
+	var uuidID *uuid.UUID
+	if req.UserID != nil {
+		parsedID, err := uuid.Parse(*req.UserID)
+		if err != nil {
+			return Filters{}, fmt.Errorf("failed to parse user_id: %w", err)
+		}
+		uuidID = &parsedID
+	}
+
+	return Filters{
+		ServiceName: req.ServiceName,
+		UserID:      uuidID,
+		StartDate:   startDate,
+		EndDate:     endDate,
+	}, nil
+}
+
+func ParseDate(input any) (time.Time, *time.Time, error) {
+	switch v := input.(type) {
+	case string:
+		parsed, err := time.Parse("01-2006", v)
+		if err != nil {
+			return time.Time{}, nil, ErrInvalidDateFormat
+		}
+		return parsed, nil, nil
+
+	case *string:
+		if v == nil {
+			return time.Time{}, nil, nil
+		}
+		parsed, err := time.Parse("01-2006", *v)
+		if err != nil {
+			return time.Time{}, nil, ErrInvalidDateFormat
+		}
+		return time.Time{}, &parsed, nil
+
+	default:
+		return time.Time{}, nil, ErrInvalidDateFormat
+	}
+}
+
+func toResponseSlice([]Subscription) []SubscriptionResp {
+	return []SubscriptionResp{}
 }

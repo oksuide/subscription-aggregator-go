@@ -20,6 +20,7 @@ type Repository interface {
 	GetSubscription(ctx context.Context, id int64) (Subscription, error)
 	DeleteSubscription(ctx context.Context, id int64) error
 	UpdateSubscription(ctx context.Context, id int64, updates Subscription) (Subscription, error)
+	GetTotalCost(ctx context.Context, filters Filters) (int, int, error)
 }
 
 func NewRepository(db *sqlx.DB, logger *zap.Logger) Repository {
@@ -130,4 +131,69 @@ func (r *Repo) UpdateSubscription(ctx context.Context, id int64, updates Subscri
 		return Subscription{}, fmt.Errorf("db update: %w", err)
 	}
 	return updated, nil
+}
+
+func (r *Repo) GetTotalCost(ctx context.Context, filters Filters) (int, int, error) {
+	r.logger.Debug("executing query with params",
+		zap.Time("start_date", filters.StartDate),
+		zap.Time("end_date", filters.EndDate),
+		zap.Any("user_id", filters.UserID), // Посмотрите, что тут
+		zap.Stringp("service_name", filters.ServiceName))
+	query := `
+			WITH filtered_subscriptions AS (
+				SELECT 
+					price,
+					start_date,
+					end_date,
+					GREATEST(start_date, $1::DATE) AS period_start,
+					CASE 
+						WHEN end_date IS NULL THEN $2::DATE
+						ELSE LEAST(end_date - INTERVAL '1 day', $2::DATE)
+					END AS period_end
+				FROM subscriptions
+				WHERE 
+					start_date <= $2::DATE 
+					AND (end_date IS NULL OR end_date >= $1::DATE)
+					AND ($3::UUID IS NULL OR user_id = $3)
+					AND ($4::TEXT IS NULL OR service_name = $4)
+			)
+			SELECT 
+				COALESCE(SUM(
+					price * (
+						EXTRACT(YEAR FROM age(period_end, period_start)) * 12 + 
+						EXTRACT(MONTH FROM age(period_end, period_start)) + 1
+					)
+				), 0)::INT AS total_cost,
+				COUNT(*)::INT AS subscriptions_count
+			FROM filtered_subscriptions
+			WHERE period_start <= period_end;`
+
+	var totalCost int
+	var count int
+	err := r.db.QueryRowContext(ctx, query,
+		filters.StartDate,
+		filters.EndDate,
+		filters.UserID,
+		filters.ServiceName,
+	).Scan(&totalCost, &count)
+
+	if err != nil {
+		r.logger.Error("failed to calculate total cost",
+			zap.Error(err),
+			zap.Any("filters", filters))
+		return 0, 0, fmt.Errorf("database error: %w", err)
+	}
+
+	if count == 0 {
+		r.logger.Debug("no subscriptions found for filters",
+			zap.Any("filters", filters))
+		return 0, 0, ErrSubscriptionNotFound
+	}
+
+	r.logger.Info("total cost calculated",
+		zap.Int("cost", totalCost),
+		zap.Int("count", count),
+		zap.Any("filters", filters))
+
+	return totalCost, count, nil
 }

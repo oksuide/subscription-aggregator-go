@@ -2,15 +2,15 @@
 
 REST API сервис для управления подписками пользователей.  
 
-# Cтарт
-1. Клонирование 
-git clone https://github.com/yourusername/subscription-service.git
-cd subscription-service
+### Cтарт
+1. Клонирование<br>
+`git clone https://github.com/yourusername/subscription-service.git`<br>
+`cd subscription-service`
 
-2. Старт
-make up
+2. Сборка и запуск<br>
+`make up`
 
-# API Endpoints
+### API Endpoints
 ```
 |   POST  | `/api/subscriptions`            |  Создать подписку   |
 |   GET   | `/api/subscriptions/:id`        |  Получить подписку  |
@@ -19,7 +19,7 @@ make up
 |   GET   | `/api/subscriptions`            |  Список (пагинация) |
 |   GET   | `/api/subscriptions/total-cost` | Стоимость за период |
 ```
-# Технологии
+### Технологии
 - Go 1.26 + Gin
 - PostgreSQL + sqlx
 - Docker + docker-compose

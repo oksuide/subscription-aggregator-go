@@ -201,15 +201,65 @@ func (h *Handler) DeleteSubscription(c *gin.Context) {
 func (h *Handler) ListSubscriptions(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), requestTimeout)
 	defer cancel()
-	ctx.Done()
-	req := struct {
-		Page  string
-		Limit string
-	}{Page: "", Limit: ""}
+
+	offset, err := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if err != nil {
+		h.logger.Warn("invalid offset",
+			zap.String("offset", c.Query("offset")),
+			zap.Error(err))
+		c.JSON(400, gin.H{"error": "invalid offset"})
+		return
+	}
+
+	if offset < 0 {
+		offset = 0
+	}
+
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if err != nil {
+		h.logger.Warn("invalid limit",
+			zap.String("limit", c.Query("limit")),
+			zap.Error(err))
+		c.JSON(400, gin.H{"error": "invalid limit"})
+		return
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	if limit > 100 {
+		limit = 100
+	}
 
 	h.logger.Debug("listing subscriptions",
-		zap.String("page", req.Page),
-		zap.String("limit", req.Limit))
+		zap.Int("offset", offset),
+		zap.Int("limit", limit))
+
+	response, err := h.service.ListSubscriptions(ctx, offset, limit)
+	if err != nil {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			c.JSON(504, gin.H{"error": "timeout"})
+		case errors.Is(err, ErrSubscriptionNotFound):
+			c.JSON(404, gin.H{"error": "subscriptions not found"})
+		default:
+			h.logger.Error("failed to list subscriptions",
+				zap.Int("status", 500),
+				zap.String("error", err.Error()),
+				zap.String("path", c.Request.URL.Path))
+			c.JSON(500, gin.H{"error": "internal error"})
+		}
+		return
+	}
+
+	h.logger.Info("subscriptions listed successfully",
+		zap.Int("count", response.Total),
+		zap.Bool("has more", response.HasMore),
+		zap.Int("offset", offset),
+		zap.Int("limit", limit))
+
+	c.JSON(200, response)
 }
 
 func (h *Handler) GetTotalCost(c *gin.Context) {

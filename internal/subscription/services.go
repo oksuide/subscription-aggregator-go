@@ -66,7 +66,7 @@ func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionRe
 	s.logger.Info("getting subscription",
 		zap.Int64("subscription_id", id))
 
-	rawResponse, err := s.repo.GetSubscription(ctx, id)
+	subscription, err := s.repo.GetSubscription(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrSubscriptionNotFound) {
 			s.logger.Debug("subscription not found", zap.Int64("id", id))
@@ -77,7 +77,7 @@ func (s *Service) GetSubscription(ctx context.Context, id int64) (SubscriptionRe
 			zap.Error(err))
 		return SubscriptionResp{}, err
 	}
-	return toResponse(rawResponse), nil
+	return toResponse(subscription), nil
 }
 
 func (s *Service) UpdateSubscription(ctx context.Context, id int64, req SubscriptionReq) (SubscriptionResp, error) {
@@ -131,6 +131,28 @@ func (s *Service) DeleteSubscription(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+func (s *Service) ListSubscriptions(ctx context.Context, offset int, limit int) (ListResult, error) {
+	s.logger.Info("listing subscriptions",
+		zap.Int("offset", offset),
+		zap.Int("limit", limit))
+
+	subscriptions, hasmore, total, err := s.repo.ListSubscriptions(ctx, offset, limit)
+	if err != nil {
+		if errors.Is(err, ErrSubscriptionNotFound) {
+			s.logger.Debug("subscription not found",
+				zap.Int("offset", offset),
+				zap.Int("limit", limit))
+			return ListResult{}, ErrSubscriptionNotFound
+		}
+		s.logger.Error("failed to list subscription from repo",
+			zap.Int("offset", offset),
+			zap.Int("limit", limit),
+			zap.Error(err))
+		return ListResult{}, err
+	}
+	return toResponseSlice(subscriptions, total, offset, limit, hasmore), nil
 }
 
 func (s *Service) CalculateTotalCost(ctx context.Context, req TotalCostReq) (TotalCostResp, error) {
@@ -216,24 +238,24 @@ func toModel(req SubscriptionReq) (Subscription, error) {
 	}, nil
 }
 
-func toResponse(rawSub Subscription) SubscriptionResp {
-	startDate := rawSub.StartDate.Format("01-2006")
+func toResponse(subscription Subscription) SubscriptionResp {
+	startDate := subscription.StartDate.Format("01-2006")
 
 	var endDate *string
-	if rawSub.EndDate != nil {
-		formatted := rawSub.EndDate.Format("01-2006")
+	if subscription.EndDate != nil {
+		formatted := subscription.EndDate.Format("01-2006")
 		endDate = &formatted
 	}
 
 	return SubscriptionResp{
-		ID:          rawSub.ID,
-		ServiceName: rawSub.ServiceName,
-		Price:       rawSub.Price,
-		UserID:      rawSub.UserID,
+		ID:          subscription.ID,
+		ServiceName: subscription.ServiceName,
+		Price:       subscription.Price,
+		UserID:      subscription.UserID,
 		StartDate:   startDate,
 		EndDate:     endDate,
-		CreatedAt:   rawSub.CreatedAt,
-		UpdatedAt:   rawSub.UpdatedAt,
+		CreatedAt:   subscription.CreatedAt,
+		UpdatedAt:   subscription.UpdatedAt,
 	}
 }
 
@@ -293,6 +315,16 @@ func ParseDate(input any) (time.Time, *time.Time, error) {
 	}
 }
 
-func toResponseSlice([]Subscription) []SubscriptionResp {
-	return []SubscriptionResp{}
+func toResponseSlice(subscriptions []Subscription, total, offset, limit int, hasMore bool) ListResult {
+	result := make([]SubscriptionResp, len(subscriptions))
+	for i, v := range subscriptions {
+		result[i] = toResponse(v)
+	}
+	return ListResult{
+		Subscriptions: result,
+		Total:         total,
+		Offset:        offset,
+		Limit:         limit,
+		HasMore:       hasMore,
+	}
 }

@@ -36,6 +36,14 @@ type SubscriptionResp struct {
 	UpdatedAt   *time.Time `json:"updated_at"`
 }
 
+type ListResult struct {
+	Subscriptions []SubscriptionResp `json:"subscriptions"`
+	Total         int                `json:"total"`
+	Offset        int                `json:"offset"`
+	Limit         int                `json:"limit"`
+	HasMore       bool               `json:"has_more"`
+}
+
 type TotalCostReq struct {
 	ServiceName *string `form:"service_name"`
 	UserID      *string `form:"user_id"`
